@@ -2,7 +2,6 @@ use chrono::prelude::*;
 use crossterm::execute;
 use crossterm::style::Color;
 use crossterm::style::{Colors, Print, ResetColor, SetColors};
-use log::{debug, error, info, trace, warn};
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering::Relaxed};
 
@@ -127,7 +126,7 @@ impl Logarithmic {
 }
 
 impl log::Log for Logarithmic {
-    fn enabled(&self, metadata: &Metadata) -> bool {
+    fn enabled(&self, _metadata: &Metadata) -> bool {
         true
     }
 
