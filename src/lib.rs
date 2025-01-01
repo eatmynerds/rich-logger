@@ -1,15 +1,21 @@
 use chrono::prelude::*;
-use crossterm::execute;
-use crossterm::style::Color;
-use crossterm::style::{Colors, Print, ResetColor, SetColors};
+use crossterm::{
+    execute,
+    style::Color,
+    style::{Colors, Print, ResetColor, SetColors},
+};
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
-use std::sync::atomic::{AtomicI32, AtomicI64, Ordering::Relaxed};
+#[cfg(feature = "async")]
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{mpsc, LazyLock};
+use std::sync::{
+    atomic::{AtomicI32, AtomicI64, Ordering::Relaxed},
+    LazyLock,
+};
 
-pub struct RichLogger {
+struct RichLogger {
     last_second: AtomicI64,
     cursor_pos: AtomicI32,
+    #[cfg(feature = "async")]
     sender: Sender<RichLoggerRecord>,
 }
 
@@ -212,31 +218,28 @@ impl log::Log for RichLogger {
 
 #[cfg(feature = "async")]
 fn spawn_logger_thread(rx: Receiver<RichLoggerRecord>) {
-    std::thread::spawn(move || {
-        loop {
-            // TODO: Get rid of unwrap
-            if let Ok(msg) = rx.recv() {
-                log_impl(msg);
-            } else {
-                break;
-            }
+    std::thread::spawn(move || loop {
+        if let Ok(msg) = rx.recv() {
+            log_impl(msg);
+        } else {
+            break;
         }
     });
 }
 
-#[cfg(not(feature = "async"))]
-fn spawn_logger_thread(_rx: Receiver<RichLoggerRecord>) {}
-
 static LOGGER: LazyLock<RichLogger> = LazyLock::new(|| {
+    #[cfg(feature = "async")]
     let (tx, rx) = mpsc::channel::<RichLoggerRecord>();
+    #[cfg(feature = "async")]
     spawn_logger_thread(rx);
     RichLogger {
+        #[cfg(feature = "async")]
         sender: tx,
         last_second: AtomicI64::default(),
         cursor_pos: AtomicI32::default(),
     }
 });
 
-pub fn init() -> Result<(), SetLoggerError> {
-    log::set_logger(&*LOGGER).map(|()| log::set_max_level(LevelFilter::Trace))
+pub fn init(level: LevelFilter) -> Result<(), SetLoggerError> {
+    log::set_logger(&*LOGGER).map(|()| log::set_max_level(level))
 }
