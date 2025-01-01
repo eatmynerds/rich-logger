@@ -4,19 +4,19 @@ use crossterm::style::Color;
 use crossterm::style::{Colors, Print, ResetColor, SetColors};
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering::Relaxed};
-use std::sync::mpsc::{Sender, Receiver};
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, LazyLock};
 
 pub struct RichLogger {
     last_second: AtomicI64,
     cursor_pos: AtomicI32,
-    sender: Sender<RichLoggerRecord>
+    sender: Sender<RichLoggerRecord>,
 }
 
 struct RichLoggerRecord {
     file_name: String,
     level: Level,
-    content: String
+    content: String,
 }
 
 fn file_name(record: &Record) -> String {
@@ -44,9 +44,7 @@ impl<'l> From<Record<'l>> for RichLoggerRecord {
         RichLoggerRecord {
             file_name: file_name(&value),
             level: value.level(),
-            content: value
-                .args()
-                .to_string()
+            content: value.args().to_string(),
         }
     }
 }
@@ -54,7 +52,7 @@ impl<'l> From<Record<'l>> for RichLoggerRecord {
 enum TabStop {
     Time,
     Level,
-    Content
+    Content,
 }
 
 impl RichLogger {
@@ -70,7 +68,7 @@ impl RichLogger {
         match tab_stop {
             TabStop::Time => 0,
             TabStop::Level => 11,
-            TabStop::Content => 17
+            TabStop::Content => 17,
         }
     }
 
@@ -154,10 +152,23 @@ fn log_impl(record: RichLoggerRecord) {
     self_log.write_level(record.level);
     let lines = record
         .content
+        .replace("\t", "    ")
+        .replace("\r", "")
         .chars()
         .collect::<Vec<_>>()
-        .chunks(width as usize - self_log.tab_stop(TabStop::Content) as usize - record.file_name.len() - 1)
+        .chunks(
+            width as usize
+                - self_log.tab_stop(TabStop::Content) as usize
+                - record.file_name.len()
+                - 1,
+        )
         .map(|chunk| chunk.iter().collect::<String>())
+        .map(|text| {
+            text.split("\n")
+                .map(|t| t.to_owned())
+                .collect::<Vec<String>>()
+        })
+        .flatten()
         .collect::<Vec<String>>();
 
     let mut first_line = true;
@@ -214,8 +225,7 @@ fn spawn_logger_thread(rx: Receiver<RichLoggerRecord>) {
 }
 
 #[cfg(not(feature = "async"))]
-fn spawn_logger_thread(_rx: Receiver<RichLoggerRecord>) {
-}
+fn spawn_logger_thread(_rx: Receiver<RichLoggerRecord>) {}
 
 static LOGGER: LazyLock<RichLogger> = LazyLock::new(|| {
     let (tx, rx) = mpsc::channel::<RichLoggerRecord>();
@@ -223,11 +233,10 @@ static LOGGER: LazyLock<RichLogger> = LazyLock::new(|| {
     RichLogger {
         sender: tx,
         last_second: AtomicI64::default(),
-        cursor_pos: AtomicI32::default()
+        cursor_pos: AtomicI32::default(),
     }
 });
 
 pub fn init() -> Result<(), SetLoggerError> {
-    log::set_logger(&*LOGGER)
-        .map(|()| log::set_max_level(LevelFilter::Trace))
+    log::set_logger(&*LOGGER).map(|()| log::set_max_level(LevelFilter::Trace))
 }
