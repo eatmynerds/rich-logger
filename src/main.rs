@@ -35,9 +35,7 @@ impl Logarithmic {
     }
 
     fn get_time(&self) -> i64 {
-        let local_time: DateTime<Local> = Local::now();
-
-        local_time.timestamp()
+        Utc::now().timestamp()
     }
 
     fn update_time(&self) {
@@ -92,7 +90,7 @@ impl Logarithmic {
         }
         self.update_time();
         let formatted_time = match DateTime::from_timestamp(self.last_second.load(Relaxed), 0) {
-            Some(s) => s,
+            Some(s) => s.with_timezone(&Local),
             None => {
                 return self.pad_to_column(11);
             }
