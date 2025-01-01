@@ -1,9 +1,10 @@
 [package]
 name = "rich-logger"
+description = "Rich logger implmentation"
 version = "0.1.0"
 edition = "2021"
 license-file = "LICENSE"
-respository = "https://github.com/eatmynerds/rich-logger"
+repository = "https://github.com/eatmynerds/rich-logger"
 readme = "README.md"
 authors = ["Jason Spalti", "Jonathan Cooper"]
 
