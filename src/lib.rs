@@ -30,70 +30,80 @@ struct RichLoggerRecord {
 }
 
 #[cfg(feature = "json")]
-fn wrap_print_json(text: &str, color: Option<Colors>) {
-    let logger = &*LOGGER;
+fn safe_wrap_print_json(text: &str, color: Option<Colors>) {
     let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80) as usize;
-
     let cursor_pos = logger.cursor_pos.load(Relaxed) as usize;
     let available_width = width.saturating_sub(cursor_pos);
 
     if text.chars().count() > available_width {
+        // Find the last valid split point for wrapping
         let split_point = text.char_indices()
             .take(available_width)
             .last()
             .map(|(idx, _)| idx)
             .unwrap_or(0);
 
+        // Print the current line
         logger.write_string(&text[..split_point], color);
         logger.add_newline();
+
+        // Recursively handle the remaining text
         logger.pad_to_column(logger.tab_stop(TabStop::Content));
-        wrap_print_json(&text[split_point..], color);
+        safe_wrap_print_json(&text[split_point..], color);
     } else {
+        // Print the remaining text on the current line
         logger.write_string(text, color);
-        logger.add_newline();
     }
 }
 
 #[cfg(feature = "json")]
 fn json_impl<T: Serialize>(value: &T, level: Level) {
-    match serde_json::value::to_value(value).unwrap() {
-        Value::Null => wrap_print_json(
-            "null",
-            Some(Colors {
-                foreground: Some(Color::Magenta),
-                background: None,
-            }),
-        ),
-        Value::Bool(b) => wrap_print_json(
-            if b { "true" } else { "false" },
-            Some(Colors {
-                foreground: Some(Color::Magenta),
-                background: None,
-            }),
-        ),
-        Value::Number(n) => wrap_print_json(
-            &n.to_string(),
-            Some(Colors {
-                foreground: Some(Color::Magenta),
-                background: None,
-            }),
-        ),
-        Value::String(s) => {
-            wrap_print_json(
+    let json_value = serde_json::to_value(value).unwrap();
+
+    match json_value {
+        serde_json::Value::Null => {
+            safe_wrap_print_json(
+                "null",
+                Some(Colors {
+                    foreground: Some(Color::Magenta),
+                    background: None,
+                }),
+            );
+        }
+        serde_json::Value::Bool(b) => {
+            safe_wrap_print_json(
+                if b { "true" } else { "false" },
+                Some(Colors {
+                    foreground: Some(Color::Magenta),
+                    background: None,
+                }),
+            );
+        }
+        serde_json::Value::Number(n) => {
+            safe_wrap_print_json(
+                &n.to_string(),
+                Some(Colors {
+                    foreground: Some(Color::Magenta),
+                    background: None,
+                }),
+            );
+        }
+        serde_json::Value::String(s) => {
+            safe_wrap_print_json(
                 r#"""#,
                 Some(Colors {
                     foreground: Some(Color::Green),
                     background: None,
                 }),
             );
-            wrap_print_json(
+            safe_wrap_print_json(
                 &s,
                 Some(Colors {
                     foreground: Some(Color::Green),
                     background: None,
                 }),
             );
-            wrap_print_json(
+            safe_wrap_print_json(
                 r#"""#,
                 Some(Colors {
                     foreground: Some(Color::Green),
@@ -101,8 +111,8 @@ fn json_impl<T: Serialize>(value: &T, level: Level) {
                 }),
             );
         }
-        Value::Array(a) => {
-            wrap_print_json(
+        serde_json::Value::Array(a) => {
+            safe_wrap_print_json(
                 "[",
                 Some(Colors {
                     foreground: Some(Color::White),
@@ -111,7 +121,7 @@ fn json_impl<T: Serialize>(value: &T, level: Level) {
             );
             for (i, v) in a.iter().enumerate() {
                 if i > 0 {
-                    wrap_print_json(
+                    safe_wrap_print_json(
                         ", ",
                         Some(Colors {
                             foreground: Some(Color::White),
@@ -121,7 +131,7 @@ fn json_impl<T: Serialize>(value: &T, level: Level) {
                 }
                 json_impl(v, level);
             }
-            wrap_print_json(
+            safe_wrap_print_json(
                 "]",
                 Some(Colors {
                     foreground: Some(Color::White),
@@ -129,8 +139,8 @@ fn json_impl<T: Serialize>(value: &T, level: Level) {
                 }),
             );
         }
-        Value::Object(o) => {
-            wrap_print_json(
+        serde_json::Value::Object(o) => {
+            safe_wrap_print_json(
                 "{",
                 Some(Colors {
                     foreground: Some(Color::White),
@@ -139,7 +149,7 @@ fn json_impl<T: Serialize>(value: &T, level: Level) {
             );
             for (i, (k, v)) in o.iter().enumerate() {
                 if i > 0 {
-                    wrap_print_json(
+                    safe_wrap_print_json(
                         ", ",
                         Some(Colors {
                             foreground: Some(Color::White),
@@ -147,28 +157,28 @@ fn json_impl<T: Serialize>(value: &T, level: Level) {
                         }),
                     );
                 }
-                wrap_print_json(
+                safe_wrap_print_json(
                     r#"""#,
                     Some(Colors {
                         foreground: Some(Color::Green),
                         background: None,
                     }),
                 );
-                wrap_print_json(
-                    &format!("{}", k),
+                safe_wrap_print_json(
+                    k,
                     Some(Colors {
                         foreground: Some(Color::Green),
                         background: None,
                     }),
                 );
-                wrap_print_json(
+                safe_wrap_print_json(
                     r#"""#,
                     Some(Colors {
                         foreground: Some(Color::Green),
                         background: None,
                     }),
                 );
-                wrap_print_json(
+                safe_wrap_print_json(
                     ": ",
                     Some(Colors {
                         foreground: Some(Color::White),
@@ -177,7 +187,7 @@ fn json_impl<T: Serialize>(value: &T, level: Level) {
                 );
                 json_impl(v, level);
             }
-            wrap_print_json(
+            safe_wrap_print_json(
                 "}",
                 Some(Colors {
                     foreground: Some(Color::White),
@@ -190,14 +200,18 @@ fn json_impl<T: Serialize>(value: &T, level: Level) {
 
 #[cfg(feature = "json")]
 pub fn json<T: Serialize>(value: &T, level: Level) {
-    let self_log = &*LOGGER;
+    let self_log = &*logger;
     self_log.pad_to_column(self_log.tab_stop(TabStop::Time));
     self_log.write_time();
     self_log.pad_to_column(self_log.tab_stop(TabStop::Level));
     self_log.write_level(level);
     self_log.pad_to_column(self_log.tab_stop(TabStop::Content));
 
+    // Generate and display the highlighted JSON
     json_impl(value, level);
+
+    // Add a newline after JSON output
+    logger.add_newline();
 }
 
 fn file_name(record: &Record) -> String {
