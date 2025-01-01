@@ -45,18 +45,19 @@ impl Logarithmic {
     }
 
     fn write_level(&self, level: Level) {
-        let color = match level {
-            Level::Warn => Color::Red,
-            Level::Info => Color::DarkBlue,
-            Level::Error => Color::DarkRed,
-            Level::Debug => Color::Green,
-            Level::Trace => Color::Yellow
+        let (foreground, background) = match level {
+            Level::Warn => (Color::Red, None),
+            Level::Info => (Color::DarkBlue, None),
+            Level::Error => (Color::DarkRed, None),
+            Level::Debug => (Color::Green, None),
+            Level::Trace => (Color::Yellow, None),
         };
+
         self.write_string(
             &level.to_string(),
             Some(Colors {
-                foreground: Some(color),
-                background: None,
+                foreground: Some(foreground),
+                background,
             }),
         );
 
