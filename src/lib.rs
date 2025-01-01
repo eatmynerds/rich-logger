@@ -212,7 +212,7 @@ pub fn json<T: Serialize>(value: &T, level: Level) {
     json_impl(value, level);
 
     // Add a newline after JSON output
-    logger.add_newline();
+    self_log.add_newline();
 }
 
 fn file_name(record: &Record) -> String {
