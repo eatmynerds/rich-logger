@@ -77,10 +77,26 @@ impl log::Log for Logarithmic {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
+            let width = crossterm::terminal::size()
+                .map(|ws| ws.0)
+                .unwrap_or(80);
+            // TODO: Make struct level
+            let padding_to_level = 20;
             self.write_time();
             self.write_level(record.level());
-            self.write_string(&record.args().to_string());
-            self.add_newline();
+            let lines = record
+                .args()
+                .to_string()
+                .chars()
+                .collect::<Vec<_>>()
+                .chunks(width as usize - padding_to_level as usize)
+                .map(|chunk| chunk.iter().collect::<String>())
+                .collect::<Vec<String>>();
+            for line in lines {
+                self.pad_to_column(padding_to_level);
+                self.write_string(&line);
+                self.add_newline();
+            }
         }
     }
 
