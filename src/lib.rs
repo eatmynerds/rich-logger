@@ -201,7 +201,7 @@ fn json_impl<T: Serialize>(value: &T, level: Level) {
 
 #[cfg(feature = "json")]
 pub fn json<T: Serialize>(value: &T, level: Level) {
-    let self_log = &*logger;
+    let self_log = &*LOGGER;
     self_log.pad_to_column(self_log.tab_stop(TabStop::Time));
     self_log.write_time();
     self_log.pad_to_column(self_log.tab_stop(TabStop::Level));
