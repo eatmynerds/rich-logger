@@ -179,12 +179,3 @@ pub fn init() -> Result<(), SetLoggerError> {
     log::set_boxed_logger(Box::new(Logarithmic::default()))
         .map(|()| log::set_max_level(LevelFilter::Trace))
 }
-
-fn main() {
-    init().unwrap();
-    debug!("hi");
-    info!("hi");
-    warn!("hi");
-    error!("hi");
-    trace!("hi");
-}
