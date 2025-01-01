@@ -12,6 +12,9 @@ authors = ["Jason Spalti", "Jonathan Cooper"]
 chrono = "0.4.39"
 crossterm = "0.28.1"
 log = { version = "0.4.22", features = ["std"] }
+serde = { version = "1.0.217", optional = false, features = ["derive"] } 
+serde_json = { version = "1.0.134", optional = false } 
 
 [features]
 async = []
+# json = [ "dep:serde", "dep:serde_json" ]
