@@ -31,18 +31,25 @@ struct RichLoggerRecord {
 
 #[cfg(feature = "json")]
 fn wrap_print_json(text: &str, color: Option<Colors>) {
-    let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80);
+    let logger = &*LOGGER;
+    let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80) as usize;
 
-    if LOGGER.cursor_pos.load(Relaxed) as usize + text.len() > width as usize {
-        LOGGER.write_string(
-            &text[0..(width as usize - LOGGER.cursor_pos.load(Relaxed) as usize)],
-            color,
-        );
-        LOGGER.add_newline();
-        LOGGER.pad_to_column(LOGGER.tab_stop(TabStop::Content));
-        wrap_print_json(&text[width as usize..], color);
+    let cursor_pos = logger.cursor_pos.load(Relaxed) as usize;
+    let available_width = width.saturating_sub(cursor_pos);
+
+    if text.chars().count() > available_width {
+        let split_point = text.char_indices()
+            .take(available_width)
+            .last()
+            .map(|(idx, _)| idx)
+            .unwrap_or(0);
+
+        logger.write_string(&text[..split_point], color);
+        logger.add_newline();
+        logger.pad_to_column(logger.tab_stop(TabStop::Content));
+        wrap_print_json(&text[split_point..], color);
     } else {
-        LOGGER.write_string(&text, color);
+        logger.write_string(text, color);
     }
 }
 

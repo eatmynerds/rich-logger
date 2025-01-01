@@ -1,7 +1,7 @@
 [package]
 name = "rich-logger"
 description = "Rich logger implmentation in rust"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 license-file = "LICENSE"
 repository = "https://github.com/eatmynerds/rich-logger"
