@@ -1,9 +1,7 @@
 use chrono::prelude::*;
 use crossterm::execute;
 use crossterm::style::Color;
-use crossterm::style::{
-    Colors, Print, ResetColor, SetColors,
-};
+use crossterm::style::{Colors, Print, ResetColor, SetColors};
 use log::{debug, error, info, trace, warn};
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering::Relaxed};
@@ -16,20 +14,21 @@ pub struct Logarithmic {
 
 impl Logarithmic {
     fn get_file_name(&self, record: &Record) -> String {
-        let file_name = match record.file()
+        let file_name = match record
+            .file()
             .map(|f| std::path::Path::new(f))
             .map(|p| p.file_name())
             .flatten()
             .map(|s| s.to_str())
             .flatten()
-            .map(|s| s.to_owned()) 
+            .map(|s| s.to_owned())
         {
             Some(s) => s,
-            None => return String::new()
+            None => return String::new(),
         };
         let line_number = match record.line() {
             Some(l) => l,
-            None => return String::new()
+            None => return String::new(),
         };
         format!("{}:{}", file_name, line_number)
     }
@@ -72,6 +71,8 @@ impl Logarithmic {
             ) {
                 print!("{text}");
             }
+
+            if let Err(_) = execute!(std::io::stdout(), ResetColor, Print("")) {}
         } else {
             if let Err(_) = execute!(std::io::stdout(), ResetColor, Print(&format!("{}", text)),) {
                 print!("{text}");
@@ -95,7 +96,13 @@ impl Logarithmic {
                 return self.pad_to_column(11);
             }
         };
-        self.write_string(&formatted_time.format("[%H:%M:%S] ").to_string(), None);
+        self.write_string(
+            &formatted_time.format("[%H:%M:%S] ").to_string(),
+            Some(Colors {
+                foreground: Some(Color::Grey),
+                background: None,
+            }),
+        );
     }
 
     fn pad_to_column(&self, column_size: i32) {
@@ -138,7 +145,13 @@ impl log::Log for Logarithmic {
                 if first_line {
                     // TODO (eatmynerds): change filename color to be gray
                     self.pad_to_column((width as usize - file_name.len()) as i32);
-                    self.write_string(&file_name, None);
+                    self.write_string(
+                        &file_name,
+                        Some(Colors {
+                            foreground: Some(Color::Grey),
+                            background: None,
+                        }),
+                    );
                     first_line = false;
                 }
 
