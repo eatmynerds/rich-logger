@@ -4,7 +4,7 @@ use crossterm::style::Color;
 use crossterm::style::{
     Colors, Print, ResetColor, SetColors,
 };
-use log::{error, info};
+use log::info;
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering::Relaxed};
 
@@ -16,25 +16,20 @@ pub struct Logarithmic {
 
 impl Logarithmic {
     fn get_file_name(&self, record: &Record) -> String {
-        if let Some(file_name) = record.file() {
-            let path = std::path::Path::new(file_name);
-            let updated_file_name = path
-                .file_name()
-                .map(|file| file.to_str().unwrap_or("").to_owned())
-                .unwrap_or(String::new());
-
-            if updated_file_name.is_empty() {
-                return String::new();
-            }
-
-            if let Some(line) = record.line() {
-                format!("{}:{}", updated_file_name, line)
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        }
+        let file_name = match record.file()
+            .map(|f| std::path::Path::new(f))
+            .map(|p| p.to_str())
+            .flatten()
+            .map(|s| s.to_owned()) 
+        {
+            Some(s) => s,
+            None => return String::new()
+        };
+        let line_number = match record.line() {
+            Some(l) => l,
+            None => return String::new()
+        };
+        format!("{}:{}", file_name, line_number)
     }
 
     fn get_time(&self) -> i64 {
