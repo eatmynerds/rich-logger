@@ -150,14 +150,13 @@ fn log_impl(record: RichLoggerRecord) {
     let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80);
     self_log.pad_to_column(self_log.tab_stop(TabStop::Time));
     self_log.write_time();
-    let padding_to_level = self_log.tab_stop(TabStop::Level);
-    self_log.pad_to_column(padding_to_level);
+    self_log.pad_to_column(self_log.tab_stop(TabStop::Level));
     self_log.write_level(record.level);
     let lines = record
         .content
         .chars()
         .collect::<Vec<_>>()
-        .chunks(width as usize - padding_to_level as usize - record.file_name.len() - 1)
+        .chunks(width as usize - self_log.tab_stop(TabStop::Content) as usize - record.file_name.len() - 1)
         .map(|chunk| chunk.iter().collect::<String>())
         .collect::<Vec<String>>();
 
