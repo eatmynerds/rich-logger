@@ -14,6 +14,12 @@ pub struct Logarithmic {
     cursor_pos: AtomicI32,
 }
 
+enum TabStop {
+    Time,
+    Level,
+    Content
+}
+
 impl Logarithmic {
     fn get_file_name(&self, record: &Record) -> String {
         let file_name = match record.file()
@@ -42,6 +48,14 @@ impl Logarithmic {
         self.last_second.store(self.get_time(), Relaxed);
     }
 
+    fn tab_stop(&self, tab_stop: TabStop) -> i32 {
+        match tab_stop {
+            TabStop::Time => 0,
+            TabStop::Level => 11,
+            TabStop::Content => 17
+        }
+    }
+
     fn write_level(&self, level: Level) {
         let (foreground, background) = match level {
             Level::Warn => (Color::Red, None),
@@ -58,8 +72,6 @@ impl Logarithmic {
                 background,
             }),
         );
-
-        self.pad_to_column(17);
     }
 
     fn write_string(&self, text: &str, colors: Option<Colors>) {
@@ -115,10 +127,10 @@ impl log::Log for Logarithmic {
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80);
-
-            // TODO: Make struct level
-            let padding_to_level = 17;
+            self.pad_to_column(self.tab_stop(TabStop::Time));
             self.write_time();
+            let padding_to_level = self.tab_stop(TabStop::Level);
+            self.pad_to_column(padding_to_level);
             self.write_level(record.level());
             let file_name = self.get_file_name(record);
             let lines = record
@@ -133,7 +145,7 @@ impl log::Log for Logarithmic {
             let mut first_line = true;
 
             for line in lines {
-                self.pad_to_column(padding_to_level);
+                self.pad_to_column(self.tab_stop(TabStop::Content));
                 self.write_string(&line, None);
                 if first_line {
                     // TODO (eatmynerds): change filename color to be gray
