@@ -17,6 +17,28 @@ pub struct Logarithmic {
 }
 
 impl Logarithmic {
+    fn get_file_name(&self, record: &Record) -> String {
+        if let Some(file_name) = record.file() {
+            let path = std::path::Path::new(file_name);
+            let updated_file_name = path
+                .file_name()
+                .map(|file| file.to_str().unwrap_or("").to_owned())
+                .unwrap_or(String::new());
+
+            if updated_file_name.is_empty() {
+                return String::new();
+            }
+
+            if let Some(line) = record.line() {
+                format!("{}:{}", updated_file_name, line)
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    }
+
     fn get_time(&self) -> i64 {
         let local_time: DateTime<Local> = Local::now();
 
@@ -135,24 +157,34 @@ impl log::Log for Logarithmic {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            let width = crossterm::terminal::size()
-                .map(|ws| ws.0)
-                .unwrap_or(80);
+            let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80);
+
             // TODO: Make struct level
-            let padding_to_level = 20;
+            let padding_to_level = 17;
             self.write_time();
             self.write_level(record.level());
+            let file_name = self.get_file_name(record);
             let lines = record
                 .args()
                 .to_string()
                 .chars()
                 .collect::<Vec<_>>()
-                .chunks(width as usize - padding_to_level as usize)
+                .chunks(width as usize - padding_to_level as usize - file_name.len() - 1)
                 .map(|chunk| chunk.iter().collect::<String>())
                 .collect::<Vec<String>>();
+
+            let mut first_line = true;
+
             for line in lines {
                 self.pad_to_column(padding_to_level);
                 self.write_string(&line, None);
+                if first_line {
+                    // TODO (eatmynerds): change filename color to be gray
+                    self.pad_to_column((width as usize - file_name.len()) as i32);
+                    self.write_string(&file_name, None);
+                    first_line = false;
+                }
+
                 self.add_newline();
             }
         }
@@ -173,9 +205,6 @@ struct Foo {
 
 fn main() {
     init();
-
-    info!("hi");
-    error!("hi");
 
     info!("hi");
 }
