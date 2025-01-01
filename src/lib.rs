@@ -50,6 +50,7 @@ fn wrap_print_json(text: &str, color: Option<Colors>) {
         wrap_print_json(&text[split_point..], color);
     } else {
         logger.write_string(text, color);
+        logger.add_newline();
     }
 }
 
