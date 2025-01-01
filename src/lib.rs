@@ -4,11 +4,51 @@ use crossterm::style::Color;
 use crossterm::style::{Colors, Print, ResetColor, SetColors};
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering::Relaxed};
+use std::sync::mpsc::{Sender, Receiver};
+use std::sync::{mpsc, LazyLock};
 
-#[derive(Default)]
 pub struct RichLogger {
     last_second: AtomicI64,
     cursor_pos: AtomicI32,
+    sender: Sender<RichLoggerRecord>
+}
+
+struct RichLoggerRecord {
+    file_name: String,
+    level: Level,
+    content: String
+}
+
+fn file_name(record: &Record) -> String {
+    let file_name = match record
+        .file()
+        .map(|f| std::path::Path::new(f))
+        .map(|p| p.file_name())
+        .flatten()
+        .map(|s| s.to_str())
+        .flatten()
+        .map(|s| s.to_owned())
+    {
+        Some(s) => s,
+        None => return String::new(),
+    };
+    let line_number = match record.line() {
+        Some(l) => l,
+        None => return String::new(),
+    };
+    format!("{}:{}", file_name, line_number)
+}
+
+impl<'l> From<Record<'l>> for RichLoggerRecord {
+    fn from(value: Record<'l>) -> Self {
+        RichLoggerRecord {
+            file_name: file_name(&value),
+            level: value.level(),
+            content: value
+                .args()
+                .to_string()
+        }
+    }
 }
 
 enum TabStop {
@@ -18,26 +58,6 @@ enum TabStop {
 }
 
 impl RichLogger {
-    fn get_file_name(&self, record: &Record) -> String {
-        let file_name = match record
-            .file()
-            .map(|f| std::path::Path::new(f))
-            .map(|p| p.file_name())
-            .flatten()
-            .map(|s| s.to_str())
-            .flatten()
-            .map(|s| s.to_owned())
-        {
-            Some(s) => s,
-            None => return String::new(),
-        };
-        let line_number = match record.line() {
-            Some(l) => l,
-            None => return String::new(),
-        };
-        format!("{}:{}", file_name, line_number)
-    }
-
     fn get_time(&self) -> i64 {
         Utc::now().timestamp()
     }
@@ -125,56 +145,90 @@ impl RichLogger {
     }
 }
 
+fn log_impl(record: RichLoggerRecord) {
+    let self_log = &*LOGGER;
+    let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80);
+    self_log.pad_to_column(self_log.tab_stop(TabStop::Time));
+    self_log.write_time();
+    let padding_to_level = self_log.tab_stop(TabStop::Level);
+    self_log.pad_to_column(padding_to_level);
+    self_log.write_level(record.level);
+    let lines = record
+        .content
+        .chars()
+        .collect::<Vec<_>>()
+        .chunks(width as usize - padding_to_level as usize - record.file_name.len() - 1)
+        .map(|chunk| chunk.iter().collect::<String>())
+        .collect::<Vec<String>>();
+
+    let mut first_line = true;
+
+    for line in lines {
+        self_log.pad_to_column(self_log.tab_stop(TabStop::Content));
+        self_log.write_string(&line, None);
+        if first_line {
+            self_log.pad_to_column((width as usize - record.file_name.len()) as i32);
+            self_log.write_string(
+                &record.file_name,
+                Some(Colors {
+                    foreground: Some(Color::Grey),
+                    background: None,
+                }),
+            );
+            first_line = false;
+        }
+
+        self_log.add_newline();
+    }
+}
+
 impl log::Log for RichLogger {
     fn enabled(&self, _metadata: &Metadata) -> bool {
         true
     }
 
+    #[cfg(feature = "async")]
     fn log(&self, record: &Record) {
-        if self.enabled(record.metadata()) {
-            let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80);
-            self.pad_to_column(self.tab_stop(TabStop::Time));
-            self.write_time();
-            let padding_to_level = self.tab_stop(TabStop::Level);
-            self.pad_to_column(padding_to_level);
-            self.write_level(record.level());
-            let file_name = self.get_file_name(record);
-            let lines = record
-                .args()
-                .to_string()
-                .chars()
-                .collect::<Vec<_>>()
-                .chunks(width as usize - padding_to_level as usize - file_name.len() - 1)
-                .map(|chunk| chunk.iter().collect::<String>())
-                .collect::<Vec<String>>();
+        let _ignore = self.sender.send((*record).clone().into());
+    }
 
-            let mut first_line = true;
-
-            for line in lines {
-                self.pad_to_column(self.tab_stop(TabStop::Content));
-                self.write_string(&line, None);
-                if first_line {
-                    // TODO (eatmynerds): change filename color to be gray
-                    self.pad_to_column((width as usize - file_name.len()) as i32);
-                    self.write_string(
-                        &file_name,
-                        Some(Colors {
-                            foreground: Some(Color::Grey),
-                            background: None,
-                        }),
-                    );
-                    first_line = false;
-                }
-
-                self.add_newline();
-            }
-        }
+    #[cfg(not(feature = "async"))]
+    fn log(&self, record: &Record) {
+        log_impl((*record).clone().into());
     }
 
     fn flush(&self) {}
 }
 
+#[cfg(feature = "async")]
+fn spawn_logger_thread(rx: Receiver<RichLoggerRecord>) {
+    std::thread::spawn(move || {
+        loop {
+            // TODO: Get rid of unwrap
+            if let Ok(msg) = rx.recv() {
+                log_impl(msg);
+            } else {
+                break;
+            }
+        }
+    });
+}
+
+#[cfg(not(feature = "async"))]
+fn spawn_logger_thread(_rx: Receiver<RichLoggerRecord>) {
+}
+
+static LOGGER: LazyLock<RichLogger> = LazyLock::new(|| {
+    let (tx, rx) = mpsc::channel::<RichLoggerRecord>();
+    spawn_logger_thread(rx);
+    RichLogger {
+        sender: tx,
+        last_second: AtomicI64::default(),
+        cursor_pos: AtomicI32::default()
+    }
+});
+
 pub fn init() -> Result<(), SetLoggerError> {
-    log::set_boxed_logger(Box::new(RichLogger::default()))
+    log::set_logger(&*LOGGER)
         .map(|()| log::set_max_level(LevelFilter::Trace))
 }

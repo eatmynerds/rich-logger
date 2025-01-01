@@ -12,3 +12,6 @@ authors = ["Jason Spalti", "Jonathan Cooper"]
 chrono = "0.4.39"
 crossterm = "0.28.1"
 log = { version = "0.4.22", features = ["std"] }
+
+[features]
+async = []
