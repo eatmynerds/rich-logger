@@ -2,12 +2,10 @@ use chrono::prelude::*;
 use crossterm::execute;
 use crossterm::style::Color;
 use crossterm::style::{
-    Color::{Black, Green},
     Colors, Print, ResetColor, SetColors,
 };
 use log::{error, info};
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
-use std::io::Write;
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering::Relaxed};
 
 #[derive(Default)]
@@ -50,53 +48,20 @@ impl Logarithmic {
     }
 
     fn write_level(&self, level: Level) {
-        match level {
-            Level::Warn => {
-                self.write_string(
-                    &level.to_string(),
-                    Some(Colors {
-                        foreground: Some(Color::Red),
-                        background: None,
-                    }),
-                );
-            }
-            Level::Info => {
-                self.write_string(
-                    &level.to_string(),
-                    Some(Colors {
-                        foreground: Some(Color::DarkBlue),
-                        background: None,
-                    }),
-                );
-            }
-            Level::Error => {
-                self.write_string(
-                    &level.to_string(),
-                    Some(Colors {
-                        foreground: Some(Color::DarkRed),
-                        background: None,
-                    }),
-                );
-            }
-            Level::Debug => {
-                self.write_string(
-                    &level.to_string(),
-                    Some(Colors {
-                        foreground: Some(Color::Green),
-                        background: None,
-                    }),
-                );
-            }
-            Level::Trace => {
-                self.write_string(
-                    &level.to_string(),
-                    Some(Colors {
-                        foreground: Some(Color::Red),
-                        background: None,
-                    }),
-                );
-            }
-        }
+        let color = match level {
+            Level::Warn => Color::Red,
+            Level::Info => Color::DarkBlue,
+            Level::Error => Color::DarkRed,
+            Level::Debug => Color::Green,
+            Level::Trace => Color::Yellow
+        };
+        self.write_string(
+            &level.to_string(),
+            Some(Colors {
+                foreground: Some(color),
+                background: None,
+            }),
+        );
 
         self.pad_to_column(17);
     }
@@ -124,28 +89,23 @@ impl Logarithmic {
     }
 
     fn write_time(&self) {
-        if self.last_second.load(Relaxed) != self.get_time() {
-            self.update_time();
-            if let Some(formatted_time) =
-                DateTime::from_timestamp(self.last_second.load(Relaxed), 0)
-            {
-                let formatted_time = formatted_time.format("[%H:%M:%S] ").to_string();
-                self.write_string(&formatted_time, None)
-            } else {
-                self.pad_to_column(11);
-            }
-        } else {
-            self.pad_to_column(11);
+        if self.last_second.load(Relaxed) == self.get_time() {
+            return self.pad_to_column(11);
         }
+        let formatted_time = match DateTime::from_timestamp(self.last_second.load(Relaxed), 0) {
+            Some(s) => s,
+            None => {
+                return self.pad_to_column(11);
+            }
+        };
+        self.write_string(&formatted_time.format("[%H:%M:%S] ").to_string(), None);
     }
 
     fn pad_to_column(&self, column_size: i32) {
         let mut column = String::new();
-
         for _ in 0..(column_size - self.cursor_pos.load(Relaxed)) {
             column += " ";
         }
-
         self.write_string(&column, None);
     }
 }
@@ -198,13 +158,8 @@ pub fn init() -> Result<(), SetLoggerError> {
         .map(|()| log::set_max_level(LevelFilter::Info))
 }
 
-#[derive(Default, Debug)]
-struct Foo {
-    x: i32,
-}
-
 fn main() {
-    init();
+    init().unwrap();
 
     info!("hi");
 }
