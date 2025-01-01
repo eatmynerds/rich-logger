@@ -89,6 +89,7 @@ impl Logarithmic {
         if self.last_second.load(Relaxed) == self.get_time() {
             return self.pad_to_column(11);
         }
+        self.update_time();
         let formatted_time = match DateTime::from_timestamp(self.last_second.load(Relaxed), 0) {
             Some(s) => s,
             None => {
