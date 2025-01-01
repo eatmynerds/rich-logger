@@ -1,6 +1,13 @@
 use chrono::prelude::*;
+use crossterm::execute;
+use crossterm::style::Color;
+use crossterm::style::{
+    Color::{Black, Green},
+    Colors, Print, ResetColor, SetColors,
+};
 use log::{error, info};
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
+use std::io::Write;
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering::Relaxed};
 
 #[derive(Default)]
@@ -21,21 +28,72 @@ impl Logarithmic {
     }
 
     fn write_level(&self, level: Level) {
-        // match level {
-        //     Level::Warn => {}
-        //     Level::Info => {}
-        //     Level::Error => {}
-        //     Level::Debug => {}
-        //     Level::Trace => {}
-        // }
+        match level {
+            Level::Warn => {
+                self.write_string(
+                    &level.to_string(),
+                    Some(Colors {
+                        foreground: Some(Color::Red),
+                        background: None,
+                    }),
+                );
+            }
+            Level::Info => {
+                self.write_string(
+                    &level.to_string(),
+                    Some(Colors {
+                        foreground: Some(Color::DarkBlue),
+                        background: None,
+                    }),
+                );
+            }
+            Level::Error => {
+                self.write_string(
+                    &level.to_string(),
+                    Some(Colors {
+                        foreground: Some(Color::DarkRed),
+                        background: None,
+                    }),
+                );
+            }
+            Level::Debug => {
+                self.write_string(
+                    &level.to_string(),
+                    Some(Colors {
+                        foreground: Some(Color::Green),
+                        background: None,
+                    }),
+                );
+            }
+            Level::Trace => {
+                self.write_string(
+                    &level.to_string(),
+                    Some(Colors {
+                        foreground: Some(Color::Red),
+                        background: None,
+                    }),
+                );
+            }
+        }
 
-        self.write_string(&level.to_string());
-        self.pad_to_column(20);
+        self.pad_to_column(17);
     }
 
-    fn write_string(&self, text: &str) {
+    fn write_string(&self, text: &str, colors: Option<Colors>) {
         self.cursor_pos.fetch_add(text.len() as i32, Relaxed);
-        print!("{text}");
+        if let Some(colors) = colors {
+            if let Err(_) = execute!(
+                std::io::stdout(),
+                SetColors(colors),
+                Print(&format!("{}", text)),
+            ) {
+                print!("{text}");
+            }
+        } else {
+            if let Err(_) = execute!(std::io::stdout(), ResetColor, Print(&format!("{}", text)),) {
+                print!("{text}");
+            }
+        };
     }
 
     fn add_newline(&self) {
@@ -50,7 +108,7 @@ impl Logarithmic {
                 DateTime::from_timestamp(self.last_second.load(Relaxed), 0)
             {
                 let formatted_time = formatted_time.format("[%H:%M:%S] ").to_string();
-                self.write_string(&formatted_time)
+                self.write_string(&formatted_time, None)
             } else {
                 self.pad_to_column(11);
             }
@@ -66,7 +124,7 @@ impl Logarithmic {
             column += " ";
         }
 
-        self.write_string(&column);
+        self.write_string(&column, None);
     }
 }
 
@@ -79,7 +137,7 @@ impl log::Log for Logarithmic {
         if self.enabled(record.metadata()) {
             self.write_time();
             self.write_level(record.level());
-            self.write_string(&record.args().to_string());
+            self.write_string(&record.args().to_string(), None);
             self.add_newline();
         }
     }
@@ -90,6 +148,11 @@ impl log::Log for Logarithmic {
 pub fn init() -> Result<(), SetLoggerError> {
     log::set_boxed_logger(Box::new(Logarithmic::default()))
         .map(|()| log::set_max_level(LevelFilter::Info))
+}
+
+#[derive(Default, Debug)]
+struct Foo {
+    x: i32,
 }
 
 fn main() {
