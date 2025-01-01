@@ -31,6 +31,7 @@ struct RichLoggerRecord {
 
 #[cfg(feature = "json")]
 fn safe_wrap_print_json(text: &str, color: Option<Colors>) {
+    let logger = &*LOGGER;
     let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80) as usize;
     let cursor_pos = logger.cursor_pos.load(Relaxed) as usize;
     let available_width = width.saturating_sub(cursor_pos);
