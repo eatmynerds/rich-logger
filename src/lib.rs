@@ -5,6 +5,7 @@ use crossterm::{
     style::{Colors, Print, ResetColor, SetColors},
 };
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
+#[cfg(feature = "json")]
 use serde::Serialize;
 #[cfg(feature = "async")]
 use std::sync::mpsc::{Receiver, Sender};
