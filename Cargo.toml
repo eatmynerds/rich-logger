@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-log = "0.4.22"
+chrono = "0.4.39"
+crossterm = "0.28.1"
+log = { version = "0.4.22", features = ["std"] }
