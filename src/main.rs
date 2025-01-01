@@ -4,7 +4,7 @@ use crossterm::style::Color;
 use crossterm::style::{
     Colors, Print, ResetColor, SetColors,
 };
-use log::info;
+use log::{debug, error, info, trace, warn};
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering::Relaxed};
 
@@ -111,7 +111,7 @@ impl Logarithmic {
 
 impl log::Log for Logarithmic {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Info
+        true
     }
 
     fn log(&self, record: &Record) {
@@ -154,11 +154,14 @@ impl log::Log for Logarithmic {
 
 pub fn init() -> Result<(), SetLoggerError> {
     log::set_boxed_logger(Box::new(Logarithmic::default()))
-        .map(|()| log::set_max_level(LevelFilter::Info))
+        .map(|()| log::set_max_level(LevelFilter::Trace))
 }
 
 fn main() {
     init().unwrap();
-
+    debug!("hi");
     info!("hi");
+    warn!("hi");
+    error!("hi");
+    trace!("hi");
 }
