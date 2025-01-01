@@ -6,7 +6,7 @@ use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering::Relaxed};
 
 #[derive(Default)]
-pub struct Logarithmic {
+pub struct RichLogger {
     last_second: AtomicI64,
     cursor_pos: AtomicI32,
 }
@@ -17,7 +17,7 @@ enum TabStop {
     Content
 }
 
-impl Logarithmic {
+impl RichLogger {
     fn get_file_name(&self, record: &Record) -> String {
         let file_name = match record
             .file()
@@ -125,7 +125,7 @@ impl Logarithmic {
     }
 }
 
-impl log::Log for Logarithmic {
+impl log::Log for RichLogger {
     fn enabled(&self, _metadata: &Metadata) -> bool {
         true
     }
@@ -175,6 +175,6 @@ impl log::Log for Logarithmic {
 }
 
 pub fn init() -> Result<(), SetLoggerError> {
-    log::set_boxed_logger(Box::new(Logarithmic::default()))
+    log::set_boxed_logger(Box::new(RichLogger::default()))
         .map(|()| log::set_max_level(LevelFilter::Trace))
 }
