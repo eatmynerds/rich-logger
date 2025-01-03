@@ -24,3 +24,5 @@ fn main() {
 ## async
  - ensures each log is handled atomically and efficiently by passing the message to a background thread. Do not use when immediate output is required.
     
+## json
+ - allows json to be logged in a pretty printed format

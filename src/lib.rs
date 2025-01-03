@@ -1,218 +1,34 @@
 use chrono::prelude::*;
 use crossterm::{
     execute,
-    style::Color,
-    style::{Colors, Print, ResetColor, SetColors},
+    style::{Color, Colors, Print, ResetColor, SetColors},
 };
-use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
-#[cfg(feature = "json")]
-use serde::Serialize;
+use log::{Level, LevelFilter, Record, SetLoggerError};
+use std::sync::atomic::Ordering::Relaxed;
 #[cfg(feature = "async")]
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{
-    atomic::{AtomicI32, AtomicI64, Ordering::Relaxed},
-    LazyLock,
-};
-#[cfg(feature = "json")]
-use serde_json::value::Value;
+#[path = "async.rs"]
+mod log_mode;
+#[cfg(not(feature = "async"))]
+#[path = "sync.rs"]
+pub(crate) mod log_mode;
 
-struct RichLogger {
-    last_second: AtomicI64,
-    cursor_pos: AtomicI32,
-    #[cfg(feature = "async")]
-    sender: Sender<RichLoggerRecord>,
-}
-
-struct RichLoggerRecord {
-    file_name: String,
-    level: Level,
-    content: String,
-}
+use log_mode::{RichLogger, LOGGER};
 
 #[cfg(feature = "json")]
-fn safe_wrap_print_json(text: &str, color: Option<Colors>) {
-    let logger = &*LOGGER;
-    let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80) as usize;
-    let cursor_pos = logger.cursor_pos.load(Relaxed) as usize;
-    let available_width = width.saturating_sub(cursor_pos);
+pub(crate) mod json;
+#[cfg(feature = "json")]
+use json::{print_json_color, JsonToken};
 
-    if text.chars().count() > available_width {
-        // Find the last valid split point for wrapping
-        let split_point = text.char_indices()
-            .take(available_width)
-            .last()
-            .map(|(idx, _)| idx)
-            .unwrap_or(0);
-
-        // Print the current line
-        logger.write_string(&text[..split_point], color);
-        logger.add_newline();
-
-        // Recursively handle the remaining text
-        logger.pad_to_column(logger.tab_stop(TabStop::Content));
-        safe_wrap_print_json(&text[split_point..], color);
-    } else {
-        // Print the remaining text on the current line
-        logger.write_string(text, color);
-    }
+pub(crate) struct RichLoggerRecord {
+    pub(crate) file_name: String,
+    pub(crate) level: Level,
+    pub(crate) content: ContentType,
 }
 
-#[cfg(feature = "json")]
-fn json_impl<T: Serialize>(value: &T, level: Level) {
-    let json_value = serde_json::to_value(value).unwrap();
-
-    match json_value {
-        serde_json::Value::Null => {
-            safe_wrap_print_json(
-                "null",
-                Some(Colors {
-                    foreground: Some(Color::Magenta),
-                    background: None,
-                }),
-            );
-        }
-        serde_json::Value::Bool(b) => {
-            safe_wrap_print_json(
-                if b { "true" } else { "false" },
-                Some(Colors {
-                    foreground: Some(Color::Magenta),
-                    background: None,
-                }),
-            );
-        }
-        serde_json::Value::Number(n) => {
-            safe_wrap_print_json(
-                &n.to_string(),
-                Some(Colors {
-                    foreground: Some(Color::Magenta),
-                    background: None,
-                }),
-            );
-        }
-        serde_json::Value::String(s) => {
-            safe_wrap_print_json(
-                r#"""#,
-                Some(Colors {
-                    foreground: Some(Color::Green),
-                    background: None,
-                }),
-            );
-            safe_wrap_print_json(
-                &s,
-                Some(Colors {
-                    foreground: Some(Color::Green),
-                    background: None,
-                }),
-            );
-            safe_wrap_print_json(
-                r#"""#,
-                Some(Colors {
-                    foreground: Some(Color::Green),
-                    background: None,
-                }),
-            );
-        }
-        serde_json::Value::Array(a) => {
-            safe_wrap_print_json(
-                "[",
-                Some(Colors {
-                    foreground: Some(Color::White),
-                    background: None,
-                }),
-            );
-            for (i, v) in a.iter().enumerate() {
-                if i > 0 {
-                    safe_wrap_print_json(
-                        ", ",
-                        Some(Colors {
-                            foreground: Some(Color::White),
-                            background: None,
-                        }),
-                    );
-                }
-                json_impl(v, level);
-            }
-            safe_wrap_print_json(
-                "]",
-                Some(Colors {
-                    foreground: Some(Color::White),
-                    background: None,
-                }),
-            );
-        }
-        serde_json::Value::Object(o) => {
-            safe_wrap_print_json(
-                "{",
-                Some(Colors {
-                    foreground: Some(Color::White),
-                    background: None,
-                }),
-            );
-            for (i, (k, v)) in o.iter().enumerate() {
-                if i > 0 {
-                    safe_wrap_print_json(
-                        ", ",
-                        Some(Colors {
-                            foreground: Some(Color::White),
-                            background: None,
-                        }),
-                    );
-                }
-                safe_wrap_print_json(
-                    r#"""#,
-                    Some(Colors {
-                        foreground: Some(Color::Green),
-                        background: None,
-                    }),
-                );
-                safe_wrap_print_json(
-                    k,
-                    Some(Colors {
-                        foreground: Some(Color::Green),
-                        background: None,
-                    }),
-                );
-                safe_wrap_print_json(
-                    r#"""#,
-                    Some(Colors {
-                        foreground: Some(Color::Green),
-                        background: None,
-                    }),
-                );
-                safe_wrap_print_json(
-                    ": ",
-                    Some(Colors {
-                        foreground: Some(Color::White),
-                        background: None,
-                    }),
-                );
-                json_impl(v, level);
-            }
-            safe_wrap_print_json(
-                "}",
-                Some(Colors {
-                    foreground: Some(Color::White),
-                    background: None,
-                }),
-            );
-        }
-    }
-}
-
-#[cfg(feature = "json")]
-pub fn json<T: Serialize>(value: &T, level: Level) {
-    let self_log = &*LOGGER;
-    self_log.pad_to_column(self_log.tab_stop(TabStop::Time));
-    self_log.write_time();
-    self_log.pad_to_column(self_log.tab_stop(TabStop::Level));
-    self_log.write_level(level);
-    self_log.pad_to_column(self_log.tab_stop(TabStop::Content));
-
-    // Generate and display the highlighted JSON
-    json_impl(value, level);
-
-    // Add a newline after JSON output
-    self_log.add_newline();
+pub(crate) enum ContentType {
+    TextContent(String),
+    #[cfg(feature = "json")]
+    JsonContent(Vec<JsonToken>),
 }
 
 fn file_name(record: &Record) -> String {
@@ -240,7 +56,7 @@ impl<'l> From<Record<'l>> for RichLoggerRecord {
         RichLoggerRecord {
             file_name: file_name(&value),
             level: value.level(),
-            content: value.args().to_string(),
+            content: ContentType::TextContent(value.args().to_string()),
         }
     }
 }
@@ -270,11 +86,11 @@ impl RichLogger {
 
     fn write_level(&self, level: Level) {
         let (foreground, background) = match level {
-            Level::Warn => (Color::Red, None),
-            Level::Info => (Color::DarkBlue, None),
-            Level::Error => (Color::DarkRed, None),
-            Level::Debug => (Color::Green, None),
-            Level::Trace => (Color::Yellow, None),
+            Level::Warn => (Color::Yellow, None),
+            Level::Info => (Color::White, None),
+            Level::Error => (Color::Black, Some(Color::Red)),
+            Level::Debug => (Color::Cyan, None),
+            Level::Trace => (Color::Green, None),
         };
 
         self.write_string(
@@ -288,6 +104,7 @@ impl RichLogger {
 
     fn write_string(&self, text: &str, colors: Option<Colors>) {
         self.cursor_pos.fetch_add(text.len() as i32, Relaxed);
+
         if let Some(colors) = colors {
             if let Err(_) = execute!(
                 std::io::stdout(),
@@ -296,13 +113,12 @@ impl RichLogger {
             ) {
                 print!("{text}");
             }
-
             if let Err(_) = execute!(std::io::stdout(), ResetColor, Print("")) {}
         } else {
             if let Err(_) = execute!(std::io::stdout(), ResetColor, Print(&format!("{}", text)),) {
                 print!("{text}");
             }
-        };
+        }
     }
 
     fn add_newline(&self) {
@@ -339,96 +155,60 @@ impl RichLogger {
     }
 }
 
-fn log_impl(record: RichLoggerRecord) {
-    let self_log = &*LOGGER;
+pub(crate) fn log_impl(record: RichLoggerRecord) {
+    let logger = &*LOGGER;
     let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80);
-    self_log.pad_to_column(self_log.tab_stop(TabStop::Time));
-    self_log.write_time();
-    self_log.pad_to_column(self_log.tab_stop(TabStop::Level));
-    self_log.write_level(record.level);
-    let lines = record
-        .content
-        .replace("\t", "    ")
-        .replace("\r", "")
-        .chars()
-        .collect::<Vec<_>>()
-        .chunks(
-            width as usize
-                - self_log.tab_stop(TabStop::Content) as usize
-                - record.file_name.len()
-                - 1,
-        )
-        .map(|chunk| chunk.iter().collect::<String>())
-        .map(|text| {
-            text.split("\n")
-                .map(|t| t.to_owned())
-                .collect::<Vec<String>>()
-        })
-        .flatten()
-        .collect::<Vec<String>>();
+    logger.pad_to_column(logger.tab_stop(TabStop::Time));
+    logger.write_time();
+    logger.pad_to_column(logger.tab_stop(TabStop::Level));
+    logger.write_level(record.level);
 
-    let mut first_line = true;
+    match &record.content {
+        ContentType::TextContent(t) => {
+            let lines = t
+                .replace("\t", "    ")
+                .replace("\r", "")
+                .chars()
+                .collect::<Vec<_>>()
+                .chunks(
+                    width as usize
+                        - logger.tab_stop(TabStop::Content) as usize
+                        - record.file_name.len()
+                        - 1,
+                )
+                .map(|chunk| chunk.iter().collect::<String>())
+                .collect::<Vec<String>>();
 
-    for line in lines {
-        self_log.pad_to_column(self_log.tab_stop(TabStop::Content));
-        self_log.write_string(&line, None);
-        if first_line {
-            self_log.pad_to_column((width as usize - record.file_name.len()) as i32);
-            self_log.write_string(
-                &record.file_name,
-                Some(Colors {
-                    foreground: Some(Color::Grey),
-                    background: None,
-                }),
-            );
-            first_line = false;
+            let mut first_line = true;
+
+            for line in lines {
+                logger.pad_to_column(logger.tab_stop(TabStop::Content));
+                logger.write_string(&line, None);
+
+                if first_line {
+                    logger.pad_to_column((width as usize - record.file_name.len()) as i32);
+                    logger.write_string(
+                        &record.file_name,
+                        Some(Colors {
+                            foreground: Some(Color::Grey),
+                            background: None,
+                        }),
+                    );
+                    first_line = false;
+                }
+
+                execute!(std::io::stdout(), ResetColor).ok();
+                logger.add_newline();
+            }
         }
-
-        self_log.add_newline();
-    }
-}
-
-impl log::Log for RichLogger {
-    fn enabled(&self, _metadata: &Metadata) -> bool {
-        true
-    }
-
-    #[cfg(feature = "async")]
-    fn log(&self, record: &Record) {
-        let _ignore = self.sender.send((*record).clone().into());
-    }
-
-    #[cfg(not(feature = "async"))]
-    fn log(&self, record: &Record) {
-        log_impl((*record).clone().into());
-    }
-
-    fn flush(&self) {}
-}
-
-#[cfg(feature = "async")]
-fn spawn_logger_thread(rx: Receiver<RichLoggerRecord>) {
-    std::thread::spawn(move || loop {
-        if let Ok(msg) = rx.recv() {
-            log_impl(msg);
-        } else {
-            break;
+        #[cfg(feature = "json")]
+        ContentType::JsonContent(j) => {
+            logger.pad_to_column(logger.tab_stop(TabStop::Content));
+            print_json_color(&record, &j);
+            logger.add_newline();
         }
-    });
-}
-
-static LOGGER: LazyLock<RichLogger> = LazyLock::new(|| {
-    #[cfg(feature = "async")]
-    let (tx, rx) = mpsc::channel::<RichLoggerRecord>();
-    #[cfg(feature = "async")]
-    spawn_logger_thread(rx);
-    RichLogger {
-        #[cfg(feature = "async")]
-        sender: tx,
-        last_second: AtomicI64::default(),
-        cursor_pos: AtomicI32::default(),
     }
-});
+}
 
 pub fn init(level: LevelFilter) -> Result<(), SetLoggerError> {
     log::set_logger(&*LOGGER).map(|()| log::set_max_level(level))

@@ -1,7 +1,7 @@
 [package]
 name = "rich-logger"
 description = "Rich logger implmentation in rust"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2021"
 license-file = "LICENSE"
 repository = "https://github.com/eatmynerds/rich-logger"
@@ -12,7 +12,7 @@ authors = ["Jason Spalti", "Jonathan Cooper"]
 chrono = "0.4.39"
 crossterm = "0.28.1"
 log = { version = "0.4.22", features = ["std"] }
-serde = { version = "1.0.217", optional = true, features = ["derive"] } 
+serde = { version = "1.0.217", optional = true } 
 serde_json = { version = "1.0.134", optional = true } 
 
 [features]
