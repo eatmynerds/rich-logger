@@ -37,13 +37,13 @@ fn safe_wrap_print_json(
     right_pad: usize,
     file_name: &str,
     print_filename: bool,
-) {
+) -> bool {
     let logger = &*LOGGER;
     let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80) as usize - right_pad + 1;
     let cursor_pos = logger.cursor_pos.load(Relaxed) as usize;
     let available_width = width.saturating_sub(cursor_pos);
 
-    if text.chars().count() > available_width {
+    if text.len() >= available_width {
         let split_point = text
             .char_indices()
             .take(available_width)
@@ -51,129 +51,141 @@ fn safe_wrap_print_json(
             .map(|(idx, _)| idx)
             .unwrap_or(0);
 
-        logger.write_string(&text[..split_point], color);
-        logger.write_string(" ", color);
+        logger.write_string(&text[..=split_point], color);
+        logger.pad_to_column((width + 1) as i32);
+        let mut printed_filename = false;
         if print_filename {
             logger.write_string(file_name, None);
+            printed_filename = true;
         }
         logger.add_newline();
         logger.pad_to_column(logger.tab_stop(TabStop::Content));
-        safe_wrap_print_json(&text[split_point..], color, right_pad, "", false);
+        return safe_wrap_print_json(&text[(split_point + 1)..], color, right_pad, "", false)
+            || printed_filename;
     } else {
         logger.write_string(text, color);
+        return false;
     }
 }
 
 pub(crate) fn print_json_color(record: &RichLoggerRecord, j: &[JsonToken]) {
+    let mut should_print_filename = true;
     for token in j {
         match &token.kind {
             TokenKind::Operator(o) => match o {
                 Operator::JsonLBrace => {
-                    safe_wrap_print_json(
+                    should_print_filename = safe_wrap_print_json(
                         "{",
                         None,
-                        record.file_name.len() + 1,
+                        record.file_name.len(),
                         record.file_name.as_str(),
-                        true,
-                    );
+                        should_print_filename,
+                    ) ^ should_print_filename;
                 }
                 Operator::JsonRBrace => {
-                    safe_wrap_print_json(
+                    should_print_filename = safe_wrap_print_json(
                         "}",
                         None,
-                        record.file_name.len() + 1,
+                        record.file_name.len(),
                         record.file_name.as_str(),
-                        true,
-                    );
+                        should_print_filename,
+                    ) ^ should_print_filename;
                 }
                 Operator::JsonLBracket => {
-                    safe_wrap_print_json(
+                    should_print_filename = safe_wrap_print_json(
                         "[",
                         None,
-                        record.file_name.len() + 1,
+                        record.file_name.len(),
                         record.file_name.as_str(),
-                        true,
-                    );
+                        should_print_filename,
+                    ) ^ should_print_filename;
                 }
                 Operator::JsonRBracket => {
-                    safe_wrap_print_json(
+                    should_print_filename = safe_wrap_print_json(
                         "]",
                         None,
-                        record.file_name.len() + 1,
+                        record.file_name.len(),
                         record.file_name.as_str(),
-                        true,
-                    );
+                        should_print_filename,
+                    ) ^ should_print_filename;
                 }
                 Operator::JsonColon => {
-                    safe_wrap_print_json(
+                    should_print_filename = safe_wrap_print_json(
                         ": ",
                         None,
-                        record.file_name.len() + 1,
+                        record.file_name.len(),
                         record.file_name.as_str(),
-                        true,
-                    );
+                        should_print_filename,
+                    ) ^ should_print_filename;
                 }
                 Operator::JsonComma => {
-                    safe_wrap_print_json(
+                    should_print_filename = safe_wrap_print_json(
                         ", ",
                         None,
-                        record.file_name.len() + 1,
+                        record.file_name.len(),
                         record.file_name.as_str(),
-                        true,
-                    );
+                        should_print_filename,
+                    ) ^ should_print_filename;
                 }
             },
             TokenKind::Literal(l) => match l {
                 Literal::StringLiteral(s) => {
-                    safe_wrap_print_json(
+                    should_print_filename = safe_wrap_print_json(
                         &format!(r#""{}""#, &s),
                         Some(Colors {
                             foreground: Some(Color::Green),
                             background: None,
                         }),
-                        record.file_name.len() + 1,
+                        record.file_name.len(),
                         record.file_name.as_str(),
-                        true,
-                    );
+                        should_print_filename,
+                    ) ^ should_print_filename;
                 }
                 Literal::NumberLiteral(n) => {
-                    safe_wrap_print_json(
+                    should_print_filename = safe_wrap_print_json(
                         &n.to_string(),
                         Some(Colors {
                             foreground: Some(Color::DarkBlue),
                             background: None,
                         }),
-                        record.file_name.len() + 1,
+                        record.file_name.len(),
                         record.file_name.as_str(),
-                        true,
-                    );
+                        should_print_filename,
+                    ) ^ should_print_filename;
                 }
                 Literal::BooleanLiteral(b) => {
-                    safe_wrap_print_json(
+                    should_print_filename = safe_wrap_print_json(
                         &b.to_string(),
                         Some(Colors {
                             foreground: Some(Color::Red),
                             background: None,
                         }),
-                        record.file_name.len() + 1,
+                        record.file_name.len(),
                         record.file_name.as_str(),
-                        true,
-                    );
+                        should_print_filename,
+                    ) ^ should_print_filename;
                 }
                 Literal::NullLiteral => {
-                    safe_wrap_print_json(
+                    should_print_filename = safe_wrap_print_json(
                         "null",
                         Some(Colors {
                             foreground: Some(Color::Yellow),
                             background: None,
                         }),
-                        record.file_name.len() + 1,
+                        record.file_name.len(),
                         record.file_name.as_str(),
-                        true,
-                    );
+                        should_print_filename,
+                    ) ^ should_print_filename;
                 }
             },
         }
+    }
+
+    if should_print_filename {
+        let logger = &*LOGGER;
+        let width = crossterm::terminal::size().map(|ws| ws.0).unwrap_or(80) as usize;
+        logger.pad_to_column((width - record.file_name.len()) as i32);
+        logger.write_string(record.file_name.as_str(), None);
     }
 }
 
